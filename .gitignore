@@ -1,4 +1,6 @@
 .streamlit/secrets.toml
+.streamlit/tnsnames.ora
+.streamlit/ewallet.pem
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
