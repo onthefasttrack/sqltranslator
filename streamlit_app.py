@@ -16,8 +16,11 @@ DEBUGGING=0
 def start_chat():
     
     # Setup a simple landing page with title and avatars
-    st.title('First Agent')
-    avatars={"system":"💻🧠","user":"🧑‍💼","assistant":"🎓"}
+    st.title('SQL Translator')
+    st.text("""Please ask any questions on the database schema. 
+               Please use the feedback keyword as a prefix for any suggestions to change the predicted query. 
+            """)
+    avatars={"system":"💻🧠","user":"🧑‍💼","assistant":"🎓", "result":"🎓"}
     
     # Keeping context of conversations, checks if there is anything in messages array
     # If not, it creates an empty list where all messages will be saved
@@ -61,8 +64,9 @@ def start_chat():
                     print(f"Key: {k}, Value: {v}")
             if resp := v.get("responseToUser"):
                 with st.chat_message("assistant", avatar=avatars["assistant"]):
-                    st.markdown(resp) 
-                st.session_state.messages.append({"role": "assistant", "content": resp})
+                    print (resp)
+                    st.text(resp) 
+                st.session_state.messages.append({"role": "result", "content": resp})
 
 if __name__ == '__main__':
     start_chat()
