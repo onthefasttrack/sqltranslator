@@ -18,7 +18,7 @@ def start_chat():
     # Setup a simple landing page with title and avatars
     st.title('SQL Translator')
     st.text("""Please ask any questions on the database schema. 
-               Please use the feedback keyword as a prefix for any suggestions to change the predicted query. 
+               I can also amend results based on follow up questions.
             """)
     avatars={"system":"💻🧠","user":"🧑‍💼","assistant":"🎓", "result":"🎓"}
     

@@ -33,7 +33,7 @@ def create_llm_message(system_prompt):
     resp.append(SystemMessage(content=system_prompt))
     
     # Get chat history from Streamlit's session state
-    msgs = st.session_state.messages[-2:]
+    msgs = st.session_state.messages[-4:]
     
     # Iterate through chat history, and based on the role (user or assistant) tag it as HumanMessage or AIMessage
     for m in msgs:
@@ -41,6 +41,9 @@ def create_llm_message(system_prompt):
         # Add user messages as HumanMessage
         resp.append(HumanMessage(content=m["content"]))
       elif m["role"] == "assistant":
+        # Add assistant messages as AIMessage
+        resp.append(AIMessage(content=m["content"]))
+      elif m["role"] == "result":
         # Add assistant messages as AIMessage
         resp.append(AIMessage(content=m["content"]))
     
@@ -158,8 +161,8 @@ class FirstAgent:
 
         Based on user query, accurately classify customer requests into one of the following categories based on context 
         and content, even if specific keywords are not used.
-        1. Feedback message: set category as "feedback"
-        2. Manufacturing or inventory or sales or suppliers or employees or consumer data: set category as "manufacturing"
+        1. Feedback based on the previous messages or a request to amend or modify the results : set category as "feedback"
+        2. Manufacturing or inventory or sales or warehouses or suppliers or employees or consumer data: set category as "manufacturing"
         3. Other: set category as "OTHERS"
         """
         llm_messages = create_llm_message(CLASSIFIER_PROMPT)
@@ -233,6 +236,7 @@ class FirstAgent:
           if results_present:
             RESULTS_PROMPT = f"""Given the input Question, if the results in json format are {result}
                                  convert the above to be more readable answer to the user. Just only give the answer
+                                 Please dont eliminate any data from the input json
                               """
             llm_messages = create_llm_message(RESULTS_PROMPT)
             llm_response = self.model.with_structured_output(Result).invoke(llm_messages)
