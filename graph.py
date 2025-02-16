@@ -128,6 +128,38 @@ def ObtainFeedback():
         connection.close()
         return resp
 
+def queryDBResults(sql_query: str):
+      connection=oracledb.connect(
+            config_dir="/workspaces/sqltranslator/.streamlit",
+            user="admin",
+            password=st.secrets['ADMIN_PASS'],
+            dsn="db1_low",
+            wallet_location="/workspaces/sqltranslator/.streamlit",
+            wallet_password=st.secrets['WALLET_PASS'])
+      cursor = connection.cursor()
+      query_to_issue = sql_query.rstrip(';')
+      query = f"""SELECT JSON_ARRAYAGG(JSON_OBJECT(* ABSENT ON NULL RETURNING CLOB) ABSENT ON NULL RETURNING CLOB PRETTY) FROM (
+    {query_to_issue})"""
+      print(f"{query=}")
+      try:
+        cursor.execute(query)
+        while True:
+          row = cursor.fetchone()
+          if row is None:
+            break
+          result = str(row[0])
+          print(row[0])
+          results_present = True
+      except oracledb.Error as e:
+        error_obj, = e.args
+        print("Error Code:", error_obj.code)
+        print("Error Full Code:", error_obj.full_code)
+        print("Error Message:", error_obj.message)
+      finally:
+        connection.close()
+
+      return results_present, result
+
 class FirstAgent:
     def __init__(self, api_key: str):
         self.model = ChatOpenAI(model="gpt-4o-mini", temperature=0, api_key=api_key)
@@ -146,10 +178,7 @@ class FirstAgent:
         workflow.add_edge("feedback", END)
         workflow.add_edge("others", END)
         workflow.add_edge("catchall", END)
-
-
         self.graph = workflow.compile()
-
 
 
     def classifier(self, state: AgentState):
@@ -185,10 +214,11 @@ class FirstAgent:
             return "others"
         else:
             return "catchall"
-    
+
     def ManufacturingAgent(self, state: AgentState):
         schema = ObtainSchema()
         feedback = ObtainFeedback()
+        
         SQL_PROMPT = f"""Given an input Question, create a syntactically correct Oracle SQL query to run.
         - Pay attention to using only the column names that you can see in the schema description.
         - Be careful to not query for columns that do not exist. Also, pay attention to which column is in which table.
@@ -204,46 +234,37 @@ class FirstAgent:
         sql_query   = llm_response.sql_query
         results_present = False
         if sql_present:
-          connection=oracledb.connect(
-            config_dir="/workspaces/sqltranslator/.streamlit",
-            user="admin",
-            password=st.secrets['ADMIN_PASS'],
-            dsn="db1_low",
-            wallet_location="/workspaces/sqltranslator/.streamlit",
-            wallet_password=st.secrets['WALLET_PASS'])
-          cursor = connection.cursor()
-          query_to_issue = sql_query.rstrip(';')
-          query = f"""SELECT JSON_ARRAYAGG(JSON_OBJECT(* ABSENT ON NULL RETURNING CLOB) ABSENT ON NULL RETURNING CLOB PRETTY) FROM (
-    {query_to_issue})"""
-          print(f"{query=}")
-          try:
-            cursor.execute(query)
-            while True:
-              row = cursor.fetchone()
-              if row is None:
-                break
-              result = str(row[0])
-              print(row[0])
-            results_present = True
-          except oracledb.Error as e:
-            error_obj, = e.args
-            print("Error Code:", error_obj.code)
-            print("Error Full Code:", error_obj.full_code)
-            print("Error Message:", error_obj.message)
-          finally:
-            connection.close()
+          results_present, result = queryDBResults(sql_query)
           
           if results_present:
             RESULTS_PROMPT = f"""Given the input Question, if the results in json format are {result}
                                  convert the above to be more readable answer to the user. Just only give the answer
-                                 Please dont eliminate any data from the input json
+                                 Please dont eliminate any data from the input json. Show all data given.
                               """
             llm_messages = create_llm_message(RESULTS_PROMPT)
             llm_response = self.model.with_structured_output(Result).invoke(llm_messages)
             result_text = llm_response.result_text
             return {"responseToUser": f"{result_text} \n The sql query used is - \n {sql_query}"}
           else:
-            return {"responseToUser": f"Could not generate the results for query - {sql_query}"}
+            FIXQUERY_PROMPT = f"""Please fix the query {sql_query} given the question as it resulted 
+                                  in an error {error_obj.message} when querying the oracle database
+                               """ 
+            llm_messages = create_llm_message(SQL_PROMPT)
+            llm_response = self.model.with_structured_output(SQL).invoke(llm_messages)
+            sql_present = llm_response.sql_present
+            sql_query   = llm_response.sql_query
+            results_present, result = queryDBResults(sql_query)
+            if results_present:
+              RESULTS_PROMPT = f"""Given the input Question, if the results in json format are {result}
+                                   convert the above to be more readable answer to the user. Just only give the answer
+                                   Please dont eliminate any data from the input json. Show all data given.
+                                """
+              llm_messages = create_llm_message(RESULTS_PROMPT)
+              llm_response = self.model.with_structured_output(Result).invoke(llm_messages)
+              result_text = llm_response.result_text
+              return {"responseToUser": f"{result_text} \n The fixed sql query used is - \n {sql_query}"}
+            else:
+              return {"responseToUser": f"Unable to generate results for sql query - {sql_query}"}
         else:
           return {"responseToUser": f"Could not generate the sql for this question. Please try a different question"}
 
